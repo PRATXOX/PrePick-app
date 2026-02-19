@@ -1,0 +1,17 @@
+# Dependencies (Sabse heavy folder)
+node_modules/
+
+# Build files (Jo deploy/apk ke waqt banti hain)
+dist/
+build/
+out/
+
+# Security (Passwords aur API keys)
+.env
+.env.local
+
+# Android / Capacitor specific 
+.gradle/
+android/app/build/
+android/.idea/
+android/.gradle/

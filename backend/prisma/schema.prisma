@@ -1,0 +1,156 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ENUMS for roles and statuses
+enum Role {
+  STUDENT
+  VENDOR
+  ADMIN
+}
+
+enum PaymentMethod {
+  ONLINE
+  CASH_ON_PICKUP
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PREPARING   
+  READY
+  PICKED_UP
+  CANCELLED
+  NO_SHOW     
+}
+
+// MODELS for our database tables
+
+model User {
+  id                   String      @id @default(uuid())
+  username             String      @unique
+  email                String      @unique
+  name                 String
+  password             String
+  phone                String      @unique
+  role                 Role        @default(STUDENT)
+  walletBalance        Float       @default(0)
+  walletTransactions   WalletTransaction[]
+  resetPasswordToken   String?     @unique
+  resetPasswordExpires DateTime?
+  orders               Order[]
+  noShowCount          Int         @default(0)
+  shop                 Shop?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  university           University? @relation(fields: [universityId], references: [id])
+  universityId         String?
+  reviews              Review[]
+}
+
+model Shop {
+  id           String     @id @default(uuid())
+  name         String
+  location     String
+  openTime     String
+  closeTime    String
+  owner        User       @relation(fields: [ownerId], references: [id])
+  ownerId      String     @unique
+  imageUrl     String?
+  qrCodeUrl    String?
+  items        Item[]
+  orders       Order[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  university   University @relation(fields: [universityId], references: [id])
+  universityId String
+  reviews      Review[]
+}
+
+model Item {
+  id           String      @id @default(uuid())
+  name         String
+  price        Float
+  imageUrl     String?
+  availability Boolean     @default(true)
+  shop         Shop        @relation(fields: [shopId], references: [id])
+  shopId       String
+  orderItems   OrderItem[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  orderTime     DateTime      @default(now())
+  pickupTime    DateTime
+  totalAmount   Float
+  pickupOtp     String?
+  status        OrderStatus   @default(PENDING)
+  student       User          @relation(fields: [studentId], references: [id])
+  studentId     String
+  shop          Shop          @relation(fields: [shopId], references: [id])
+  shopId        String
+  paymentMethod PaymentMethod
+  paymentId     String?       // <--- NEW: Razorpay Payment ID save karne ke liye
+  items         OrderItem[]
+  updatedAt     DateTime      @updatedAt
+  review        Review?
+}
+
+model OrderItem {
+  id       String @id @default(uuid())
+  quantity Int
+  order    Order  @relation(fields: [orderId], references: [id])
+  orderId  String
+  item     Item   @relation(fields: [itemId], references: [id])
+  itemId   String
+
+  @@unique([orderId, itemId])
+}
+
+// PostgreSQL Compatible Model
+model University {
+  id        String   @id @default(uuid()) // <-- Change: UUID use karein (ObjectId hata dein)
+  name      String   @unique
+  location  String?  @default("India")    // <-- Location field add kar di (Default value ke saath)
+  image     String?  @default("https://images.unsplash.com/photo-1562774053-701939374585?q=80&w=1000")
+  
+  // Relations
+  users     User[]
+  shops     Shop[]
+  
+  createdAt DateTime @default(now())
+}
+
+model WalletTransaction {
+  id        String   @id @default(uuid())
+  amount    Float
+  type      String
+  details   String?
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  shopId    String
+  order     Order?   @relation(fields: [orderId], references: [id])
+  orderId   String?  @unique
+}
+
