@@ -82,7 +82,8 @@ function VendorDashboard() {
 
     // Socket.IO Connection
     useEffect(() => {
-        const socket = io('http://localhost:5000');
+        // const socket = io('http://localhost:5000');
+        const socket = io('https://prepick-app.onrender.com');
         
         socket.on('new_order', (newOrderData) => {
             if (activeFilter === 'ongoing') {

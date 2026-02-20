@@ -54,7 +54,9 @@ function OrderHistoryPage() {
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
   
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    
+    // const socket = io('http://localhost:5000');
+    const socket = io('https://prepick-app.onrender.com');
     socket.on('order_updated', (updatedOrder) => {
       setOrders(prevOrders => prevOrders.map(order => order.id === updatedOrder.id ? updatedOrder : order));
     });

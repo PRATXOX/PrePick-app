@@ -98,7 +98,8 @@ function VendorDashboard() {
     // Socket IO
     useEffect(() => {
         if(!shop) return;
-        const socket = io('http://localhost:5000');
+        // const socket = io('http://localhost:5000');
+        const socket = io('https://prepick-app.onrender.com');
         socket.on('new_order', (newOrder) => {
             if (activeFilter === 'ongoing') setOrders(prev => [newOrder, ...prev]);
             setOngoingNotifCount(prev => prev + 1);
