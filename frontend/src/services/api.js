@@ -6,7 +6,7 @@ import axios from 'axios';
 // });
 
 
-const api = axios.create({ baseURL: 'https://prepick-app.onrender.com' });
+const api = axios.create({ baseURL: 'https://prepick-app.onrender.com/api' });
 // Response Interceptor (Token Expire hone par logout)
 api.interceptors.response.use(
   (response) => response,

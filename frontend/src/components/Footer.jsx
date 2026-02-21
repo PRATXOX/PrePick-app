@@ -85,7 +85,7 @@ const Footer = () => {
         {/* Bottom Bar */}
         <div className="border-t border-gray-200 dark:border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center">
           <p className="text-sm text-gray-400">
-            © {new Date().getFullYear()} PrePick Labs. All rights reserved.
+            © {new Date().getFullYear()} PrePick. All rights reserved.
           </p>
           <div className="flex gap-6 mt-4 md:mt-0 text-sm text-gray-400">
              <span>Made with ❤️ for Students</span>
