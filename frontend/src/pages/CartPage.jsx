@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { Link, useNavigate } from 'react-router-dom';
 
-// 1. Script Load karne ka Helper Function
 const loadRazorpayScript = () => {
   return new Promise((resolve) => {
     const script = document.createElement('script');
@@ -16,33 +15,45 @@ const loadRazorpayScript = () => {
 };
 
 function CartPage() {
-  const { cartItems, clearCart, removeFromCart } = useCart();
+  // 👇 Yahan humne 'updateQuantity' ko bhi import kar liya
+  const { cartItems, clearCart, removeFromCart, updateQuantity } = useCart();
   const { token, user } = useAuth();
   const navigate = useNavigate();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCodBlocked, setIsCodBlocked] = useState(false);
 
-  // --- 💰 PRICE CALCULATIONS (Business Logic) ---
-  const subtotal = cartItems.reduce((total, item) => {
-    const price = parseFloat(item.price) || 0; // Agar price missing hai to 0 maano
-    return total + (item.quantity * price);
-}, 0);
+  // --- 🆕 PLUS/MINUS LOGIC ---
+  // --- 🆕 PLUS/MINUS LOGIC (FIXED) ---
+  const handleQuantityChange = (item, change) => {
+    // Isko pakka Number bana diya taaki "1" + 1 = 2 ho
+    const currentQty = Number(item.quantity) || 1; 
 
-  // Logic: Cash lene par ₹10 Extra 'Handling Fee'
+    // Agar quantity 1 hai aur user minus (-) dabata hai
+    if (change === -1 && currentQty === 1) {
+      const confirmRemove = window.confirm("Are you sure you want to remove this item?");
+      if (confirmRemove) {
+        removeFromCart(item.id);
+      }
+    } else {
+      // Normal plus ya minus
+      updateQuantity(item.id, currentQty + change);
+    }
+  };
+
+  // --- 💰 PRICE CALCULATIONS ---
+  const subtotal = cartItems.reduce((total, item) => {
+    const price = parseFloat(item.price) || 0; 
+    return total + (item.quantity * price);
+  }, 0);
+
+  const platformFee = 5.00;
   const cashHandlingFee = 10.00;
 
-  // Logic: Online lene par 5% Discount
-  const onlineDiscount = Math.round(subtotal * 0.05); 
+  const totalForOnline = subtotal + platformFee; 
+  const totalForCash = subtotal + platformFee + cashHandlingFee;
+  const totalSavings = cashHandlingFee;
 
-  // Final Amounts
-  const totalForCash = subtotal + cashHandlingFee;
-  const totalForOnline = subtotal - onlineDiscount;
-  
-  // Total Savings (Fee bachayi + Discount mila)
-  const totalSavings = cashHandlingFee + onlineDiscount;
-
-  // Check User Status (Blocking Logic)
   useEffect(() => {
       const checkUserStatus = async () => {
           try {
@@ -58,28 +69,22 @@ function CartPage() {
   // --- A. CASH ORDER FUNCTION ---
   const placeCodOrder = async () => {
     if (!token) return alert("Please Login first.");
-
     if (isCodBlocked) return alert("COD blocked due to missed orders. Please Pay Online.");
 
-    // 🧠 Psychology Trick: Confirm box mein nuksan dikhao
-    if(!window.confirm(`⚠️ You are paying ₹${totalForCash} (Includes ₹10 Fee).\n\nPay Online to save ₹${totalSavings}?\n\nPress OK to continue with Cash.`)) {
+    if(!window.confirm(`⚠️ You are paying ₹${totalForCash.toFixed(2)} (Includes ₹10 Cash Fee & ₹5 Platform Fee).\n\nPay Online to save ₹${totalSavings}?\n\nPress OK to continue with Cash.`)) {
         return;
     }
     
     setIsProcessing(true);
-
     try {
         const orderData = {
-    shopId: cartItems[0].shopId,
-    items: cartItems.map(item => ({ itemId: item.id, quantity: item.quantity })),
-    pickupTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    paymentMethod: 'CASH_ON_PICKUP',
-
-    // 👇👇 YE LINE ADD KARNA MAT BHOOLNA 👇👇
-    totalAmount: totalForCash  
-};
+          shopId: cartItems[0].shopId,
+          items: cartItems.map(item => ({ itemId: item.id, quantity: item.quantity })),
+          pickupTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          paymentMethod: 'CASH_ON_PICKUP',
+          totalAmount: totalForCash  
+        };
         
-
         await api.post('/orders', orderData, {
             headers: { Authorization: `Bearer ${token}` }
         });
@@ -89,17 +94,15 @@ function CartPage() {
         navigate('/my-orders');
 
     } catch (error) {
-        const msg = error.response?.data?.error || 'Failed to place order.';
-        alert(msg);
+        alert(error.response?.data?.error || 'Failed to place order.');
     } finally { 
         setIsProcessing(false); 
     }
   };
 
-  // --- B. ONLINE PAYMENT FUNCTION (Discounted) ---
+  // --- B. ONLINE PAYMENT FUNCTION ---
   const handleOnlinePayment = async () => {
     setIsProcessing(true);
-
     const res = await loadRazorpayScript();
     if (!res) {
         alert('Razorpay SDK failed to load.');
@@ -109,56 +112,45 @@ function CartPage() {
 
     try {
         const config = { headers: { Authorization: `Bearer ${token}` } };
-
-        // 👇 IMPORTANT: Backend ko Discounted Amount bhejo
         const orderRes = await api.post('/payment/create-order', { amount: totalForOnline }, config);
-        
         const { id: order_id, amount, currency } = orderRes.data; 
 
         const options = {
-            key: "rzp_test_RvWqIB6hNIoWAg", // ✅ Tumhari Key ID
+            key: "rzp_test_RvWqIB6hNIoWAg", 
             amount: amount,
             currency: currency,
             name: "PrePick Campus",
-            description: `You saved ₹${totalSavings}!`, // User ko khushi hogi ye dekh kar
+            description: `You saved ₹${totalSavings} cash fee!`, 
             order_id: order_id, 
             handler: async function (response) {
-    try {
-        const verifyRes = await api.post('/payment/verify', {
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature: response.razorpay_signature,
-            cartItems: cartItems,
-            shopId: cartItems[0].shopId,
-            pickupTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-            
-            // 👇👇 YE LINE ADD KARO (ZAROORI HAI) 👇👇
-            totalAmount: totalForOnline 
-        }, config);
+              try {
+                  const verifyRes = await api.post('/payment/verify', {
+                      razorpay_order_id: response.razorpay_order_id,
+                      razorpay_payment_id: response.razorpay_payment_id,
+                      razorpay_signature: response.razorpay_signature,
+                      cartItems: cartItems,
+                      shopId: cartItems[0].shopId,
+                      pickupTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+                      totalAmount: totalForOnline 
+                  }, config);
 
-        if(verifyRes.status === 200) {
-            alert(`Payment Successful! You saved ₹${totalSavings}.`);
-            clearCart();
-            navigate('/my-orders');
-        }
-    } catch (err) {
-        console.error(err);
-        alert("Payment verified but order creation failed. Contact Admin.");
-    }
-},
-            prefill: {
-                name: user?.name,
-                email: user?.email,
-                contact: user?.phone
+                  if(verifyRes.status === 200) {
+                      alert(`Payment Successful! You saved ₹${totalSavings}.`);
+                      clearCart();
+                      navigate('/my-orders');
+                  }
+              } catch (err) {
+                  alert("Payment verified but order creation failed. Contact Admin.");
+              }
             },
-            theme: { color: "#10B981" } // Green Color for Success/Money
+            prefill: { name: user?.name, email: user?.email, contact: user?.phone },
+            theme: { color: "#10B981" } 
         };
 
         const paymentObject = new window.Razorpay(options);
         paymentObject.open();
 
     } catch (error) {
-        console.error("Payment Error:", error);
         if (error.response && error.response.status === 401) {
             alert("Session expired. Please Login again.");
             navigate('/');
@@ -191,13 +183,33 @@ function CartPage() {
           {cartItems.map((item) => (
             <div key={item.id} className="flex items-center bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
               <img src={item.imageUrl || 'https://via.placeholder.com/100'} alt={item.name} className="w-20 h-20 rounded-lg object-cover" />
+              
               <div className="flex-grow ml-4">
                 <h2 className="text-lg font-bold dark:text-white">{item.name}</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Qty: {item.quantity}</p>
+                
+                {/* 🆕 PLUS / MINUS BUTTONS UI */}
+                <div className="flex items-center space-x-3 mt-2">
+                  <button 
+                    onClick={() => handleQuantityChange(item, -1)}
+                    className="w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full font-bold text-gray-600 dark:text-gray-300 hover:bg-red-100 hover:text-red-500 transition-colors"
+                  >
+                    -
+                  </button>
+                  <span className="font-semibold text-gray-800 dark:text-white w-4 text-center">
+                    {item.quantity}
+                  </span>
+                  <button 
+                    onClick={() => handleQuantityChange(item, 1)}
+                    className="w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full font-bold text-gray-600 dark:text-gray-300 hover:bg-green-100 hover:text-green-600 transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
+
               <div className="text-right">
                 <p className="text-lg font-semibold dark:text-white">₹{(item.price * item.quantity).toFixed(2)}</p>
-                <button onClick={() => removeFromCart(item.id)} className="text-red-500 text-xs mt-1 hover:underline">Remove</button>
+                <button onClick={() => removeFromCart(item.id)} className="text-red-500 text-xs mt-2 hover:underline">Remove</button>
               </div>
             </div>
           ))}
@@ -213,31 +225,30 @@ function CartPage() {
                   <span>Item Total</span>
                   <span>₹{subtotal.toFixed(2)}</span>
               </div>
+              
+              <div className="flex justify-between text-green-600 font-medium">
+                  <span>Platform Fee</span>
+                  <span>+ ₹{platformFee.toFixed(2)}</span>
+              </div>
 
-              {/* SAVINGS BANNER */}
-              <div className="bg-green-100 text-green-800 p-2 rounded-lg text-xs text-center font-bold border border-green-200">
-                  🎉 Pay Online & Save ₹{totalSavings}!
+              <div className="bg-green-100 text-green-800 p-2 rounded-lg text-xs text-center font-bold border border-green-200 mt-2">
+                  🎉 Pay Online to Save ₹{totalSavings} Cash Fee!
               </div>
 
               <div className="border-t border-dashed my-2 dark:border-gray-600"></div>
 
-              {/* Online Price Logic */}
               <div className="flex justify-between items-center text-green-600 font-bold text-lg">
-                  <span className="flex items-center gap-1">
-                      Pay Online <span className="text-[10px] bg-green-100 px-1 rounded">5% OFF</span>
-                  </span>
+                  <span>Total (Online)</span>
                   <span>₹{totalForOnline.toFixed(2)}</span>
               </div>
               
-              {/* Cash Price Logic */}
-              <div className="flex justify-between items-center text-gray-400 text-xs">
-                  <span>Pay Cash (incl. ₹10 fee)</span>
+              <div className="flex justify-between items-center text-gray-400 text-xs mt-1">
+                  <span>Total (Cash) incl. ₹10 penalty</span>
                   <span className="line-through decoration-red-500">₹{totalForCash.toFixed(2)}</span>
               </div>
             </div>
             
             <div className="space-y-4 mt-6">
-              {/* 1. ONLINE BUTTON (HERO BUTTON) */}
               <button 
                 onClick={handleOnlinePayment} 
                 disabled={isProcessing}
@@ -252,7 +263,6 @@ function CartPage() {
                   <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
               </div>
 
-              {/* 2. CASH BUTTON (SECONDARY) */}
               <button 
                 onClick={placeCodOrder} 
                 disabled={isProcessing || isCodBlocked}

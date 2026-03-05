@@ -283,7 +283,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     },
   });
 
-  const resetURL = `http://localhost:5173/reset-password/${resetToken}`;
+  const resetURL = `https://prepick-app.onrender.com/reset-password/${resetToken}`;
 
   // --- Send the Email ---
   const transporter = nodemailer.createTransport({

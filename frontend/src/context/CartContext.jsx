@@ -34,6 +34,17 @@ export const CartProvider = ({ children }) => {
       );
     });
   };
+  const updateQuantity = (id, newQuantity) => {
+    setCartItems((prevItems) => {
+      const updatedItems = prevItems.map((item) =>
+        item.id === id ? { ...item, quantity: newQuantity } : item
+      );
+      // Agar LocalStorage use ho raha hai, toh naya data save karo:
+      localStorage.setItem('cartItems', JSON.stringify(updatedItems)); 
+      return updatedItems;
+    });
+  };
+
 
   const clearCart = () => {
     setCartItems([]);
@@ -46,5 +57,11 @@ export const CartProvider = ({ children }) => {
     clearCart,
   };
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  // CHECK KARO KI KYA AAPKI AAKHIRI LINE AISI DIKHTI HAI? 👇
+  
+  return (
+    <CartContext.Provider value={{ cartItems, addToCart, removeFromCart, clearCart, updateQuantity }}>
+      {children}
+    </CartContext.Provider>
+  );
 };
