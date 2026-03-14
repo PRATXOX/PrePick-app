@@ -3,7 +3,7 @@ import axios from 'axios';
 // 👇 Yahan wo IP daalo jo tumhare error log mein dikh raha hai
 // Tumhare log ke hisab se ye: 172.21.161.24 hai.
 // Agar ye WSL ka IP hai aur phone connect na ho, to 'ipconfig' wala '192.168...' use karna.
-const API_URL = 'http://172.21.165.21:5000/api'; 
+const API_URL = 'https://prepick-app.onrender.com'; 
 
 const api = axios.create({
   baseURL: API_URL,

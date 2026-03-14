@@ -15,33 +15,29 @@ const loadRazorpayScript = () => {
 };
 
 function CartPage() {
-  // 👇 Yahan humne 'updateQuantity' ko bhi import kar liya
   const { cartItems, clearCart, removeFromCart, updateQuantity } = useCart();
   const { token, user } = useAuth();
   const navigate = useNavigate();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCodBlocked, setIsCodBlocked] = useState(false);
+  
+  // 🆕 Naya State: Check karne ke liye ki kya ye First Order hai?
+  const [isFirstOrder, setIsFirstOrder] = useState(false);
 
-  // --- 🆕 PLUS/MINUS LOGIC ---
-  // --- 🆕 PLUS/MINUS LOGIC (FIXED) ---
   const handleQuantityChange = (item, change) => {
-    // Isko pakka Number bana diya taaki "1" + 1 = 2 ho
     const currentQty = Number(item.quantity) || 1; 
-
-    // Agar quantity 1 hai aur user minus (-) dabata hai
     if (change === -1 && currentQty === 1) {
       const confirmRemove = window.confirm("Are you sure you want to remove this item?");
       if (confirmRemove) {
         removeFromCart(item.id);
       }
     } else {
-      // Normal plus ya minus
       updateQuantity(item.id, currentQty + change);
     }
   };
 
-  // --- 💰 PRICE CALCULATIONS ---
+  // --- 💰 PRICE CALCULATIONS (WITH FIRST ORDER MAGIC) ---
   const subtotal = cartItems.reduce((total, item) => {
     const price = parseFloat(item.price) || 0; 
     return total + (item.quantity * price);
@@ -49,18 +45,29 @@ function CartPage() {
 
   const platformFee = 5.00;
   const cashHandlingFee = 10.00;
+  
+  // 🎁 First Order Promo Logic (Agar First order hai toh ₹10 minus, warna ₹0)
+  const firstOrderPromo = isFirstOrder ? 10.00 : 0.00;
 
-  const totalForOnline = subtotal + platformFee; 
-  const totalForCash = subtotal + platformFee + cashHandlingFee;
-  const totalSavings = cashHandlingFee;
+  // Math.max(0, ...) isliye lagaya taaki agar bill ₹10 se kam ho toh total negative (minus) mein na jaye
+  const totalForOnline = Math.max(0, subtotal + platformFee - firstOrderPromo); 
+  const totalForCash = Math.max(0, subtotal + platformFee + cashHandlingFee - firstOrderPromo);
+  const totalSavings = cashHandlingFee; // Cash penalty bachane ka savings
 
+  // User ka status aur Order History check karna
   useEffect(() => {
       const checkUserStatus = async () => {
           try {
               const response = await api.get('/users/me', {
                   headers: { Authorization: `Bearer ${token}` }
               });
+              
               if (response.data.noShowCount >= 3) setIsCodBlocked(true);
+
+              // 👇 First Order Check: Agar orderCount 0 hai ya orders array khali hai
+              if (response.data.orderCount === 0 || (response.data.orders && response.data.orders.length === 0)) {
+                  setIsFirstOrder(true);
+              }
           } catch (error) { console.error("Status check failed", error); }
       };
       if(token) checkUserStatus();
@@ -71,7 +78,7 @@ function CartPage() {
     if (!token) return alert("Please Login first.");
     if (isCodBlocked) return alert("COD blocked due to missed orders. Please Pay Online.");
 
-    if(!window.confirm(`⚠️ You are paying ₹${totalForCash.toFixed(2)} (Includes ₹10 Cash Fee & ₹5 Platform Fee).\n\nPay Online to save ₹${totalSavings}?\n\nPress OK to continue with Cash.`)) {
+    if(!window.confirm(`⚠️ You are paying ₹${totalForCash.toFixed(2)} (Includes Cash Fee).\n\nPay Online to save ₹${totalSavings}?\n\nPress OK to continue with Cash.`)) {
         return;
     }
     
@@ -120,7 +127,7 @@ function CartPage() {
             amount: amount,
             currency: currency,
             name: "PrePick Campus",
-            description: `You saved ₹${totalSavings} cash fee!`, 
+            description: isFirstOrder ? "First Order Discount Applied! 🎉" : `You saved ₹${totalSavings} cash fee!`, 
             order_id: order_id, 
             handler: async function (response) {
               try {
@@ -135,7 +142,7 @@ function CartPage() {
                   }, config);
 
                   if(verifyRes.status === 200) {
-                      alert(`Payment Successful! You saved ₹${totalSavings}.`);
+                      alert(`Payment Successful! ${isFirstOrder ? 'Welcome to PrePick! 🎉' : ''}`);
                       clearCart();
                       navigate('/my-orders');
                   }
@@ -186,8 +193,6 @@ function CartPage() {
               
               <div className="flex-grow ml-4">
                 <h2 className="text-lg font-bold dark:text-white">{item.name}</h2>
-                
-                {/* 🆕 PLUS / MINUS BUTTONS UI */}
                 <div className="flex items-center space-x-3 mt-2">
                   <button 
                     onClick={() => handleQuantityChange(item, -1)}
@@ -226,14 +231,25 @@ function CartPage() {
                   <span>₹{subtotal.toFixed(2)}</span>
               </div>
               
-              <div className="flex justify-between text-green-600 font-medium">
+              <div className="flex justify-between text-gray-500 dark:text-gray-400">
                   <span>Platform Fee</span>
                   <span>+ ₹{platformFee.toFixed(2)}</span>
               </div>
 
-              <div className="bg-green-100 text-green-800 p-2 rounded-lg text-xs text-center font-bold border border-green-200 mt-2">
-                  🎉 Pay Online to Save ₹{totalSavings} Cash Fee!
-              </div>
+              {/* 🎁 🆕 FIRST ORDER PROMO BANNER & CALCULATION */}
+              {isFirstOrder && (
+                <div className="flex justify-between text-green-600 font-bold text-base bg-green-50 dark:bg-green-900/30 p-2 rounded-lg border border-green-200 dark:border-green-800 mt-2">
+                    <span>First Order Promo 🥳</span>
+                    <span>- ₹{firstOrderPromo.toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* SAVINGS BANNER */}
+              {!isFirstOrder && (
+                <div className="bg-green-100 text-green-800 p-2 rounded-lg text-xs text-center font-bold border border-green-200 mt-2">
+                    🎉 Pay Online to Save ₹{totalSavings} Cash Fee!
+                </div>
+              )}
 
               <div className="border-t border-dashed my-2 dark:border-gray-600"></div>
 
