@@ -55,22 +55,41 @@ function CartPage() {
   const totalSavings = cashHandlingFee; // Cash penalty bachane ka savings
 
   // User ka status aur Order History check karna
+ // User ka status aur Order History check karna
+  // User ka status aur Order History check karna
   useEffect(() => {
-      const checkUserStatus = async () => {
+      const checkUserStatusAndOrders = async () => {
           try {
-              const response = await api.get('/users/me', {
+              // 1. Check user status (For COD Block)
+              const userRes = await api.get('/users/me', {
+                  headers: { Authorization: `Bearer ${token}` }
+              });
+              if (userRes.data.noShowCount >= 3) setIsCodBlocked(true);
+
+              // 2. Fetch Orders
+              const ordersRes = await api.get('/orders', {
                   headers: { Authorization: `Bearer ${token}` }
               });
               
-              if (response.data.noShowCount >= 3) setIsCodBlocked(true);
+              // 👇 Ye line humein console mein batayegi ki backend kya bhej raha hai
+              console.log("BACKEND ORDERS DATA:", ordersRes.data); 
+              
+              // Backend chahe direct array bheje ya object mein wrap karke, ye handle kar lega
+              const ordersArray = ordersRes.data.orders || ordersRes.data || [];
 
-              // 👇 First Order Check: Agar orderCount 0 hai ya orders array khali hai
-              if (response.data.orderCount === 0 || (response.data.orders && response.data.orders.length === 0)) {
+              // Agar purane orders ki list ekdum khali hai, toh ye First Order hai! 🎉
+              if (Array.isArray(ordersArray) && ordersArray.length === 0) {
                   setIsFirstOrder(true);
+              } else {
+                  setIsFirstOrder(false);
               }
-          } catch (error) { console.error("Status check failed", error); }
+
+          } catch (error) { 
+              console.error("Data fetch failed", error); 
+          }
       };
-      if(token) checkUserStatus();
+      
+      if(token) checkUserStatusAndOrders();
   }, [token]);
 
   // --- A. CASH ORDER FUNCTION ---
