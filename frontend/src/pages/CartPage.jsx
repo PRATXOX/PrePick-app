@@ -67,9 +67,10 @@ function CartPage() {
               if (userRes.data.noShowCount >= 3) setIsCodBlocked(true);
 
               // 2. Fetch Orders
-              const ordersRes = await api.get('/orders', {
-                  headers: { Authorization: `Bearer ${token}` }
-              });
+              // 👇 Sirf URL change karna hai yahan
+const ordersRes = await api.get('/orders/my-orders', {
+    headers: { Authorization: `Bearer ${token}` }
+});
               
               // 👇 Ye line humein console mein batayegi ki backend kya bhej raha hai
               console.log("BACKEND ORDERS DATA:", ordersRes.data); 
