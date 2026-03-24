@@ -94,9 +94,16 @@ const ordersRes = await api.get('/orders/my-orders', {
   }, [token]);
 
   // --- A. CASH ORDER FUNCTION ---
-  const placeCodOrder = async () => {
+ const placeCodOrder = async () => {
     if (!token) return alert("Please Login first.");
     if (isCodBlocked) return alert("COD blocked due to missed orders. Please Pay Online.");
+
+    // 👇 NAYA CHECK ADD KIYA
+    const isSingleShop = cartItems.every(item => item.shopId === cartItems[0].shopId);
+    if (!isSingleShop) {
+      return alert("Error: You have items from multiple shops in your cart. Please clear the cart and try again.");
+    }
+    // ... baaki ka purana code ...
 
     if(!window.confirm(`⚠️ You are paying ₹${totalForCash.toFixed(2)} (Includes Cash Fee).\n\nPay Online to save ₹${totalSavings}?\n\nPress OK to continue with Cash.`)) {
         return;
@@ -129,6 +136,10 @@ const ordersRes = await api.get('/orders/my-orders', {
 
   // --- B. ONLINE PAYMENT FUNCTION ---
   const handleOnlinePayment = async () => {
+    const isSingleShop = cartItems.every(item => item.shopId === cartItems[0].shopId);
+    if (!isSingleShop) {
+      return alert("Error: You have items from multiple shops in your cart. Please clear the cart and try again.");
+    }
     setIsProcessing(true);
     const res = await loadRazorpayScript();
     if (!res) {

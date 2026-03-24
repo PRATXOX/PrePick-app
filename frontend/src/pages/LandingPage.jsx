@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import Footer from '../components/Footer';
 import api from '../services/api';
 import logo from '../assets/newprepick.png'; 
+import androidImg from "../assets/android.png";
 
 // StarDisplay Component (Same as before)
 const StarDisplay = ({ rating }) => (
@@ -322,7 +323,11 @@ function LandingPage() {
                   </div>
               </div>
               <div className="md:w-1/2 flex justify-center">
-                  <img src="https://b.zmtcdn.com/data/o2_assets/f773629053b24263e69f601925790f301680693809.png" alt="Mobile App" className="max-w-md w-full drop-shadow-2xl"/>
+                  <img 
+  src={androidImg} 
+  alt="Android Logo" 
+  className="max-w-md w-full drop-shadow-2xl"
+/>
               </div>
           </div>
       </div>
