@@ -21,7 +21,7 @@ function VendorDashboard() {
     // --- States ---
     const [orders, setOrders] = useState([]);
     const [items, setItems] = useState([]);
-    const [shop, setShop] = useState(null); // ⚠️ Agar ye null raha, toh create form dikhega
+    const [shop, setShop] = useState(null); 
     const [loading, setLoading] = useState(true);
     const { token } = useAuth();
     
@@ -50,14 +50,12 @@ function VendorDashboard() {
         setLoading(true);
         
         try {
-            // 1. SHOP FETCH KARO (Alag se try-catch mein)
             let currentShop = null;
             try {
                 const shopRes = await api.get('/shops/my-shop', { headers: { Authorization: `Bearer ${token}` } });
                 setShop(shopRes.data);
                 currentShop = shopRes.data;
                 
-                // Form pre-fill karo taaki edit kar sakein
                 setShopForm({
                     name: shopRes.data.name,
                     location: shopRes.data.location,
@@ -65,12 +63,10 @@ function VendorDashboard() {
                     closeTime: shopRes.data.closeTime
                 });
             } catch (err) {
-                // Agar 404 aaya, matlab shop nahi bani hai. Koi baat nahi.
                 console.warn("Shop not found. Showing create form.");
                 setShop(null);
             }
 
-            // 2. AGAR SHOP MIL GAYI, TABHI ITEMS AUR ORDERS LAO
             if (currentShop) {
                 let ordersUrl = `/orders/vendor?status=${filter}`;
                 if (query) ordersUrl = `/orders/vendor/search?q=${query}&status=${filter}`;
@@ -98,7 +94,6 @@ function VendorDashboard() {
     // Socket IO
     useEffect(() => {
         if(!shop) return;
-        // const socket = io('http://localhost:5000');
         const socket = io('https://prepick-app.onrender.com');
         socket.on('new_order', (newOrder) => {
             if (activeFilter === 'ongoing') setOrders(prev => [newOrder, ...prev]);
@@ -112,20 +107,29 @@ function VendorDashboard() {
     }, [activeFilter, debouncedSearchTerm, fetchData, shop]);
 
     // --- HANDLERS ---
-
-    // 🆕 CREATE SHOP (Agar registration ke waqt nahi bani thi)
     const handleCreateShop = async (e) => {
         e.preventDefault();
         try {
             await api.post('/shops', shopForm, { headers: { Authorization: `Bearer ${token}` } });
             alert("Shop Created Successfully! 🎉");
-            fetchData('ongoing', ''); // Ab data load karo
+            fetchData('ongoing', ''); 
         } catch (error) {
             alert(error.response?.data?.error || "Failed to create shop.");
         }
     };
+    // 🎁 REWARD REDEEM HANDLER
+    const handleRedeemReward = async () => {
+        try {
+            const res = await api.post('/vendor/redeem-reward', {}, { 
+                headers: { Authorization: `Bearer ${token}` } 
+            });
+            alert(res.data.message); // Success message dikhega
+            fetchData(activeFilter, debouncedSearchTerm); // Dashboard ko refresh karo taaki naya balance dikhe
+        } catch (error) {
+            alert(error.response?.data?.error || "Failed to redeem reward.");
+        }
+    };
 
-    // ✏️ UPDATE SHOP
     const handleUpdateShop = async (e) => {
         e.preventDefault();
         try {
@@ -138,7 +142,6 @@ function VendorDashboard() {
         }
     };
 
-    // ITEM HANDLERS (Add/Edit/Delete/Image)
     const handleAddItem = async (e) => {
         e.preventDefault();
         try {
@@ -213,7 +216,6 @@ function VendorDashboard() {
 
     if (loading) return <p className="text-center mt-8 dark:text-gray-300">Checking shop status...</p>;
 
-    // 🚨 SCENARIO: SHOP NOT FOUND (Show Create Form) 🚨
     if (!shop) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
@@ -247,7 +249,6 @@ function VendorDashboard() {
         );
     }
 
-    // --- SCENARIO: SHOP EXISTS (Show Dashboard) ---
     return (
         <div className="bg-background min-h-screen dark:bg-gray-900 pb-20">
             <div className="container mx-auto p-8">
@@ -277,8 +278,74 @@ function VendorDashboard() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* LEFT: ORDERS */}
-                    <div className="lg:col-span-2">
+                    {/* LEFT: REWARDS & ORDERS */}
+                    <div className="lg:col-span-2 space-y-6">
+                        
+                        {/* 🏆 MILESTONE REWARDS CARD (Sahi jagah par aa gaya!) */}
+                        <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-orange-200 rounded-2xl p-6 shadow-sm">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-bold text-orange-800 flex items-center gap-2">
+                                    🏆 Century Bonus Rewards
+                                </h3>
+                                <span className="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full border border-orange-200">
+                                    ₹150 / 100 Orders
+                                </span>
+                            </div>
+
+                            {(() => {
+                                const totalOrders = 105; // 🚨 DEMO KE LIYE: Baad mein API se link karenge
+                                const rewardsClaimed = 0; 
+                                
+                                const eligibleReward = Math.floor(totalOrders / 100) * 150;
+                                const availableToRedeem = eligibleReward - rewardsClaimed;
+                                const nextMilestone = (Math.floor(totalOrders / 100) + 1) * 100;
+                                const ordersNeeded = nextMilestone - totalOrders;
+                                const progressPercent = ((totalOrders % 100) / 100) * 100;
+
+                                return (
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white p-3 rounded-xl border border-orange-100">
+                                                <p className="text-sm text-gray-500">Total Completed</p>
+                                                <p className="text-2xl font-black text-gray-800">{totalOrders} Orders</p>
+                                            </div>
+                                            <div className="bg-white p-3 rounded-xl border border-orange-100">
+                                                <p className="text-sm text-gray-500">Available to Redeem</p>
+                                                <p className="text-2xl font-black text-green-600">₹{availableToRedeem}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-sm font-bold text-gray-700">
+                                                <span>Progress to {nextMilestone}</span>
+                                                <span>{ordersNeeded} more to go!</span>
+                                            </div>
+                                            <div className="w-full bg-orange-200 rounded-full h-3">
+                                                <div 
+                                                    className="bg-gradient-to-r from-orange-400 to-red-500 h-3 rounded-full transition-all duration-1000" 
+                                                    style={{ width: `${progressPercent}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+
+                                        {/* Redeem Button Update */}
+<button 
+    onClick={handleRedeemReward} // 🚨 YAHAN CHANGE KIYA HAI
+    disabled={availableToRedeem <= 0}
+    className={`w-full py-3 rounded-xl font-bold text-white transition-all transform active:scale-95
+        ${availableToRedeem > 0 
+            ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg hover:from-green-600 hover:to-emerald-700' 
+            : 'bg-gray-300 cursor-not-allowed'
+        }`}
+>
+    {availableToRedeem > 0 ? `🤑 Redeem ₹${availableToRedeem} to Wallet` : 'No Rewards Available Yet'}
+</button>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        {/* ORDERS LIST */}
                         {orders.length === 0 ? (
                             <div className="text-center bg-white dark:bg-gray-800 p-10 rounded-xl shadow-md"><p className="text-gray-500 dark:text-gray-400">No orders here.</p></div>
                         ) : (

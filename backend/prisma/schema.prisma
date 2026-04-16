@@ -54,6 +54,7 @@ model User {
   university           University? @relation(fields: [universityId], references: [id])
   universityId         String?
   reviews              Review[]
+  rewardsClaimed       Float       @default(0)
 }
 
 model Shop {

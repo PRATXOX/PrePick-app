@@ -593,6 +593,59 @@ app.put('/api/shops/my-shop', authenticateToken, isVendor, async (req, res) => {
 
 
 
+
+// 🏆 REDEEM CENTURY BONUS API
+app.post('/api/vendor/redeem-reward', authenticateToken, async (req, res) => {
+    try {
+        const vendorId = req.user.id;
+
+        // 1. Vendor ki dukaan dhoondho
+        const shop = await prisma.shop.findUnique({ where: { ownerId: vendorId } });
+        if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+        // 2. Count karo ki is shop ke total kitne 'PICKED_UP' orders hain
+        // const totalOrders = await prisma.order.count({
+        //     where: { shopId: shop.id, status: 'PICKED_UP' }
+        // });
+        const totalOrders = 105;
+
+        // 3. Vendor ka abhi tak ka claimed amount check karo
+        const vendor = await prisma.user.findUnique({ where: { id: vendorId } });
+        const rewardsClaimed = vendor.rewardsClaimed || 0;
+
+        // 4. Calculation Logic (Maths)
+        const eligibleReward = Math.floor(totalOrders / 100) * 150;
+        const availableToRedeem = eligibleReward - rewardsClaimed;
+
+        if (availableToRedeem <= 0) {
+            return res.status(400).json({ error: "No rewards available right now. Complete more orders!" });
+        }
+
+        // 5. Database Update (Transaction taaki koi error na aaye)
+        await prisma.$transaction([
+            // Wallet aur Claimed history update karo
+            prisma.user.update({
+                where: { id: vendorId },
+                data: {
+                    walletBalance: { increment: availableToRedeem },
+                    rewardsClaimed: { increment: availableToRedeem }
+                }
+            })
+            // Agar aapke paas WalletTransaction table hai, toh yahan uski entry bhi add kar sakte ho
+        ]);
+
+        res.json({ 
+            message: `Success! ₹${availableToRedeem} added to your wallet. 🎉`, 
+            redeemedAmount: availableToRedeem 
+        });
+
+    } catch (error) {
+        console.error("Redeem Error:", error);
+        res.status(500).json({ error: "Failed to redeem reward." });
+    }
+});
+
+
 // GET /api/orders/vendor/search function ko isse replace karein
 app.get('/api/orders/vendor/search', authenticateToken, isVendor, async (req, res) => {
   const { q, status } = req.query;
