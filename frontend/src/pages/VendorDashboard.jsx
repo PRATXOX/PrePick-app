@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import useDebounce from '../hooks/useDebounce';
 import io from 'socket.io-client';
 
-// Toggle Switch Component
 const ToggleSwitch = ({ checked, onChange }) => {
     return (
         <label className="relative inline-flex items-center cursor-pointer">
@@ -18,25 +17,24 @@ const ToggleSwitch = ({ checked, onChange }) => {
 };
 
 function VendorDashboard() {
-    // --- States ---
     const [orders, setOrders] = useState([]);
     const [items, setItems] = useState([]);
     const [shop, setShop] = useState(null); 
     const [loading, setLoading] = useState(true);
-    const { token } = useAuth();
     
-    // Filters & Search
+    // 🚨 NAYA STATE: REAL STATS KE LIYE
+    const [rewardStats, setRewardStats] = useState({ totalOrders: 0, rewardsClaimed: 0 });
+    
+    const { token } = useAuth();
     const [activeFilter, setActiveFilter] = useState('ongoing');
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 500);
     const [ongoingNotifCount, setOngoingNotifCount] = useState(0);
     const [cancelledNotifCount, setCancelledNotifCount] = useState(0);
 
-    // Create/Edit Shop Form State
     const [shopForm, setShopForm] = useState({ name: '', location: '', openTime: '', closeTime: '' });
     const [isShopModalOpen, setIsShopModalOpen] = useState(false);
 
-    // Items State
     const [newItemName, setNewItemName] = useState('');
     const [newItemPrice, setNewItemPrice] = useState('');
     const [itemToUpdateId, setItemToUpdateId] = useState(null);
@@ -44,28 +42,29 @@ function VendorDashboard() {
     const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false);
     const fileInputRef = useRef(null);
 
-    // --- SMART DATA FETCHING 🧠 ---
+    // Fetch Stats Function
+    const fetchRewardStats = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await api.get('/vendor/reward-stats', { headers: { Authorization: `Bearer ${token}` } });
+            setRewardStats(res.data);
+        } catch (err) { console.error("Failed to fetch stats", err); }
+    }, [token]);
+
     const fetchData = useCallback(async (filter, query) => {
         if (!token) return;
         setLoading(true);
-        
         try {
             let currentShop = null;
             try {
                 const shopRes = await api.get('/shops/my-shop', { headers: { Authorization: `Bearer ${token}` } });
                 setShop(shopRes.data);
                 currentShop = shopRes.data;
-                
                 setShopForm({
-                    name: shopRes.data.name,
-                    location: shopRes.data.location,
-                    openTime: shopRes.data.openTime,
-                    closeTime: shopRes.data.closeTime
+                    name: shopRes.data.name, location: shopRes.data.location,
+                    openTime: shopRes.data.openTime, closeTime: shopRes.data.closeTime
                 });
-            } catch (err) {
-                console.warn("Shop not found. Showing create form.");
-                setShop(null);
-            }
+            } catch (err) { setShop(null); }
 
             if (currentShop) {
                 let ordersUrl = `/orders/vendor?status=${filter}`;
@@ -75,23 +74,16 @@ function VendorDashboard() {
                     api.get(ordersUrl, { headers: { Authorization: `Bearer ${token}` } }),
                     api.get('/items/my-items', { headers: { Authorization: `Bearer ${token}` } }),
                 ]);
-                
                 setOrders(ordersRes.data);
                 setItems(itemsRes.data);
+                fetchRewardStats(); // STATS BHI FETCH KARO
             }
+        } catch (error) { console.error('Error fetching data:', error); } 
+        finally { setLoading(false); }
+    }, [token, fetchRewardStats]);
 
-        } catch (error) {
-            console.error('Error fetching dashboard data:', error);
-        } finally {
-            setLoading(false);
-        }
-    }, [token]);
+    useEffect(() => { fetchData(activeFilter, debouncedSearchTerm); }, [activeFilter, debouncedSearchTerm, fetchData]);
 
-    useEffect(() => {
-        fetchData(activeFilter, debouncedSearchTerm);
-    }, [activeFilter, debouncedSearchTerm, fetchData]);
-
-    // Socket IO
     useEffect(() => {
         if(!shop) return;
         const socket = io('https://prepick-app.onrender.com');
@@ -106,62 +98,43 @@ function VendorDashboard() {
         return () => socket.disconnect();
     }, [activeFilter, debouncedSearchTerm, fetchData, shop]);
 
-    // --- HANDLERS ---
     const handleCreateShop = async (e) => {
         e.preventDefault();
         try {
             await api.post('/shops', shopForm, { headers: { Authorization: `Bearer ${token}` } });
-            alert("Shop Created Successfully! 🎉");
-            fetchData('ongoing', ''); 
-        } catch (error) {
-            alert(error.response?.data?.error || "Failed to create shop.");
-        }
+            alert("Shop Created Successfully! 🎉"); fetchData('ongoing', ''); 
+        } catch (error) { alert("Failed to create shop."); }
     };
-    // 🎁 REWARD REDEEM HANDLER
+
     const handleRedeemReward = async () => {
         try {
-            const res = await api.post('/vendor/redeem-reward', {}, { 
-                headers: { Authorization: `Bearer ${token}` } 
-            });
-            alert(res.data.message); // Success message dikhega
-            fetchData(activeFilter, debouncedSearchTerm); // Dashboard ko refresh karo taaki naya balance dikhe
-        } catch (error) {
-            alert(error.response?.data?.error || "Failed to redeem reward.");
-        }
+            const res = await api.post('/vendor/redeem-reward', {}, { headers: { Authorization: `Bearer ${token}` } });
+            alert(res.data.message);
+            fetchRewardStats(); // REDEEM KE BAAD REFRESH
+        } catch (error) { alert(error.response?.data?.error || "Failed to redeem reward."); }
     };
 
     const handleUpdateShop = async (e) => {
         e.preventDefault();
         try {
             await api.put('/shops/my-shop', shopForm, { headers: { Authorization: `Bearer ${token}` } });
-            setShop({ ...shop, ...shopForm });
-            setIsShopModalOpen(false);
-            alert("Shop Updated!");
-        } catch (error) {
-            alert("Failed to update shop.");
-        }
+            setShop({ ...shop, ...shopForm }); setIsShopModalOpen(false); alert("Shop Updated!");
+        } catch (error) { alert("Failed to update shop."); }
     };
 
     const handleAddItem = async (e) => {
         e.preventDefault();
         try {
             const res = await api.post('/items', { name: newItemName, price: parseFloat(newItemPrice) }, { headers: { Authorization: `Bearer ${token}` } });
-            setItems(prev => [res.data, ...prev]);
-            setNewItemName(''); setNewItemPrice('');
-            alert('Item added!');
+            setItems(prev => [res.data, ...prev]); setNewItemName(''); setNewItemPrice(''); alert('Item added!');
         } catch (error) { alert('Failed to add item.'); }
     };
 
     const handleUpdateItem = async (e) => {
         e.preventDefault();
         try {
-            await api.put(`/items/${editingItem.id}`, 
-                { name: editingItem.name, price: parseFloat(editingItem.price), availability: editingItem.availability }, 
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            setItems(prev => prev.map(i => i.id === editingItem.id ? editingItem : i));
-            setIsEditItemModalOpen(false);
-            alert("Item updated!");
+            await api.put(`/items/${editingItem.id}`, { name: editingItem.name, price: parseFloat(editingItem.price), availability: editingItem.availability }, { headers: { Authorization: `Bearer ${token}` } });
+            setItems(prev => prev.map(i => i.id === editingItem.id ? editingItem : i)); setIsEditItemModalOpen(false); alert("Item updated!");
         } catch (error) { alert("Failed to update."); }
     };
 
@@ -177,14 +150,10 @@ function VendorDashboard() {
     const handleFileSelected = async (event) => {
         const file = event.target.files[0];
         if (!file || !itemToUpdateId) return;
-        const formData = new FormData();
-        formData.append('itemImage', file);
+        const formData = new FormData(); formData.append('itemImage', file);
         try {
-            await api.post(`/items/${itemToUpdateId}/upload-image`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` },
-            });
-            fetchData(activeFilter, debouncedSearchTerm);
-            alert('Image uploaded!');
+            await api.post(`/items/${itemToUpdateId}/upload-image`, formData, { headers: { 'Content-Type': 'multipart/form-data', Authorization: `Bearer ${token}` } });
+            fetchData(activeFilter, debouncedSearchTerm); alert('Image uploaded!');
         } catch (error) { alert('Failed to upload.'); }
         finally { setItemToUpdateId(null); if(fileInputRef.current) fileInputRef.current.value = null; }
     };
@@ -205,6 +174,7 @@ function VendorDashboard() {
         }
         try {
             await api.patch(`/orders/${orderId}/status`, { status: newStatus, otp }, { headers: { Authorization: `Bearer ${token}` } });
+            if (newStatus === 'PICKED_UP') fetchRewardStats(); // PROGRESS BAR TURANT UPDATE HOGA
         } catch (error) { alert(error.response?.data?.error || 'Failed to update.'); }
     };
 
@@ -221,26 +191,12 @@ function VendorDashboard() {
             <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 p-4">
                 <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl max-w-md w-full">
                     <h2 className="text-2xl font-bold mb-2 text-center dark:text-white">Setup Your Shop 🏪</h2>
-                    <p className="text-gray-500 text-center mb-6 text-sm">Please enter your shop details to continue.</p>
-                    
                     <form onSubmit={handleCreateShop} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium dark:text-gray-300">Shop Name</label>
-                            <input type="text" value={shopForm.name} onChange={(e) => setShopForm({...shopForm, name: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium dark:text-gray-300">Location</label>
-                            <input type="text" value={shopForm.location} onChange={(e) => setShopForm({...shopForm, location: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required />
-                        </div>
+                        <div><label className="block text-sm dark:text-gray-300">Shop Name</label><input type="text" value={shopForm.name} onChange={(e) => setShopForm({...shopForm, name: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required /></div>
+                        <div><label className="block text-sm dark:text-gray-300">Location</label><input type="text" value={shopForm.location} onChange={(e) => setShopForm({...shopForm, location: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required /></div>
                         <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium dark:text-gray-300">Open</label>
-                                <input type="time" value={shopForm.openTime} onChange={(e) => setShopForm({...shopForm, openTime: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium dark:text-gray-300">Close</label>
-                                <input type="time" value={shopForm.closeTime} onChange={(e) => setShopForm({...shopForm, closeTime: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required />
-                            </div>
+                            <div><label className="block text-sm dark:text-gray-300">Open</label><input type="time" value={shopForm.openTime} onChange={(e) => setShopForm({...shopForm, openTime: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required /></div>
+                            <div><label className="block text-sm dark:text-gray-300">Close</label><input type="time" value={shopForm.closeTime} onChange={(e) => setShopForm({...shopForm, closeTime: e.target.value})} className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" required /></div>
                         </div>
                         <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700">Create Shop 🚀</button>
                     </form>
@@ -248,6 +204,15 @@ function VendorDashboard() {
             </div>
         );
     }
+
+    // --- REWARD CALCULATIONS (NOW DYNAMIC) ---
+    const totalOrders = rewardStats.totalOrders;
+    const rewardsClaimed = rewardStats.rewardsClaimed; 
+    const eligibleReward = Math.floor(totalOrders / 100) * 150;
+    const availableToRedeem = eligibleReward - rewardsClaimed;
+    const nextMilestone = (Math.floor(totalOrders / 100) + 1) * 100;
+    const ordersNeeded = nextMilestone - totalOrders;
+    const progressPercent = ((totalOrders % 100) / 100) * 100;
 
     return (
         <div className="bg-background min-h-screen dark:bg-gray-900 pb-20">
@@ -257,13 +222,10 @@ function VendorDashboard() {
                     <div>
                         <h1 className="text-3xl font-extrabold font-poppins text-secondary dark:text-white flex items-center gap-2">
                             {`👋 ${shop.name}`}
-                            <button onClick={() => setIsShopModalOpen(true)} className="text-sm bg-gray-200 dark:bg-gray-700 p-2 rounded-full hover:bg-gray-300 text-gray-700 dark:text-white" title="Edit Shop">✏️</button>
+                            <button onClick={() => setIsShopModalOpen(true)} className="text-sm bg-gray-200 dark:bg-gray-700 p-2 rounded-full hover:bg-gray-300 dark:text-white" title="Edit Shop">✏️</button>
                         </h1>
                         <p className="text-gray-500 dark:text-gray-400 mt-1">{shop.location} | {shop.openTime} - {shop.closeTime}</p>
                     </div>
-                    <form onSubmit={(e) => e.preventDefault()} className="relative w-full max-w-sm mt-4 md:mt-0">
-                        <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search..." className="w-full border dark:border-gray-600 rounded-full px-4 py-2 pr-10 dark:bg-gray-700 dark:text-white"/>
-                    </form>
                 </div>
                 
                 {/* TABS */}
@@ -281,68 +243,43 @@ function VendorDashboard() {
                     {/* LEFT: REWARDS & ORDERS */}
                     <div className="lg:col-span-2 space-y-6">
                         
-                        {/* 🏆 MILESTONE REWARDS CARD (Sahi jagah par aa gaya!) */}
+                        {/* 🏆 MILESTONE REWARDS CARD */}
                         <div className="bg-gradient-to-br from-yellow-50 to-orange-50 border border-orange-200 rounded-2xl p-6 shadow-sm">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-xl font-bold text-orange-800 flex items-center gap-2">
-                                    🏆 Century Bonus Rewards
-                                </h3>
-                                <span className="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full border border-orange-200">
-                                    ₹150 / 100 Orders
-                                </span>
+                                <h3 className="text-xl font-bold text-orange-800 flex items-center gap-2">🏆 Century Bonus Rewards</h3>
+                                <span className="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full border border-orange-200">₹150 / 100 Orders</span>
                             </div>
 
-                            {(() => {
-                                const totalOrders = 105; // 🚨 DEMO KE LIYE: Baad mein API se link karenge
-                                const rewardsClaimed = 0; 
-                                
-                                const eligibleReward = Math.floor(totalOrders / 100) * 150;
-                                const availableToRedeem = eligibleReward - rewardsClaimed;
-                                const nextMilestone = (Math.floor(totalOrders / 100) + 1) * 100;
-                                const ordersNeeded = nextMilestone - totalOrders;
-                                const progressPercent = ((totalOrders % 100) / 100) * 100;
-
-                                return (
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white p-3 rounded-xl border border-orange-100">
-                                                <p className="text-sm text-gray-500">Total Completed</p>
-                                                <p className="text-2xl font-black text-gray-800">{totalOrders} Orders</p>
-                                            </div>
-                                            <div className="bg-white p-3 rounded-xl border border-orange-100">
-                                                <p className="text-sm text-gray-500">Available to Redeem</p>
-                                                <p className="text-2xl font-black text-green-600">₹{availableToRedeem}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between text-sm font-bold text-gray-700">
-                                                <span>Progress to {nextMilestone}</span>
-                                                <span>{ordersNeeded} more to go!</span>
-                                            </div>
-                                            <div className="w-full bg-orange-200 rounded-full h-3">
-                                                <div 
-                                                    className="bg-gradient-to-r from-orange-400 to-red-500 h-3 rounded-full transition-all duration-1000" 
-                                                    style={{ width: `${progressPercent}%` }}
-                                                ></div>
-                                            </div>
-                                        </div>
-
-                                        {/* Redeem Button Update */}
-<button 
-    onClick={handleRedeemReward} // 🚨 YAHAN CHANGE KIYA HAI
-    disabled={availableToRedeem <= 0}
-    className={`w-full py-3 rounded-xl font-bold text-white transition-all transform active:scale-95
-        ${availableToRedeem > 0 
-            ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg hover:from-green-600 hover:to-emerald-700' 
-            : 'bg-gray-300 cursor-not-allowed'
-        }`}
->
-    {availableToRedeem > 0 ? `🤑 Redeem ₹${availableToRedeem} to Wallet` : 'No Rewards Available Yet'}
-</button>
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-white p-3 rounded-xl border border-orange-100">
+                                        <p className="text-sm text-gray-500">Total Completed</p>
+                                        <p className="text-2xl font-black text-gray-800">{totalOrders} Orders</p>
                                     </div>
-                                );
-                            })()}
+                                    <div className="bg-white p-3 rounded-xl border border-orange-100">
+                                        <p className="text-sm text-gray-500">Available to Redeem</p>
+                                        <p className="text-2xl font-black text-green-600">₹{availableToRedeem}</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-sm font-bold text-gray-700">
+                                        <span>Progress to {nextMilestone}</span>
+                                        <span>{ordersNeeded} more to go!</span>
+                                    </div>
+                                    <div className="w-full bg-orange-200 rounded-full h-3">
+                                        <div className="bg-gradient-to-r from-orange-400 to-red-500 h-3 rounded-full transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={handleRedeemReward}
+                                    disabled={availableToRedeem <= 0}
+                                    className={`w-full py-3 rounded-xl font-bold text-white transition-all transform active:scale-95 ${availableToRedeem > 0 ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg' : 'bg-gray-300 cursor-not-allowed'}`}
+                                >
+                                    {availableToRedeem > 0 ? `🤑 Redeem ₹${availableToRedeem} to Wallet` : 'No Rewards Available Yet'}
+                                </button>
+                            </div>
                         </div>
 
                         {/* ORDERS LIST */}

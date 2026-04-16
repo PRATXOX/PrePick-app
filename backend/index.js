@@ -592,28 +592,43 @@ app.put('/api/shops/my-shop', authenticateToken, isVendor, async (req, res) => {
 
 
 
+// 📊 1. API: DASHBOARD KO REAL REWARD STATS BHEJNE KE LIYE (NAYI API)
+app.get('/api/vendor/reward-stats', authenticateToken, async (req, res) => {
+    try {
+        const vendorId = req.user.id;
+        const shop = await prisma.shop.findUnique({ where: { ownerId: vendorId } });
+        if (!shop) return res.json({ totalOrders: 0, rewardsClaimed: 0 });
 
+        // Database se asli 'PICKED_UP' orders gino
+        const totalOrders = await prisma.order.count({
+            where: { shopId: shop.id, status: 'PICKED_UP' }
+        });
+        
+        const vendor = await prisma.user.findUnique({ where: { id: vendorId } });
+        res.json({ totalOrders, rewardsClaimed: vendor.rewardsClaimed || 0 });
+    } catch (error) {
+        console.error("Stats Error:", error);
+        res.status(500).json({ error: "Failed to fetch stats" });
+    }
+});
 
-// 🏆 REDEEM CENTURY BONUS API
+// 🏆 2. API: REDEEM CENTURY BONUS (UPDATED LOGIC)
 app.post('/api/vendor/redeem-reward', authenticateToken, async (req, res) => {
     try {
         const vendorId = req.user.id;
 
-        // 1. Vendor ki dukaan dhoondho
         const shop = await prisma.shop.findUnique({ where: { ownerId: vendorId } });
         if (!shop) return res.status(404).json({ error: "Shop not found" });
 
-        // 2. Count karo ki is shop ke total kitne 'PICKED_UP' orders hain
-        // const totalOrders = await prisma.order.count({
-        //     where: { shopId: shop.id, status: 'PICKED_UP' }
-        // });
-        const totalOrders = 105;
+        // 🚨 HARDCODE HATA DIYA: Ab asli Database count hoga
+        const totalOrders = await prisma.order.count({
+            where: { shopId: shop.id, status: 'PICKED_UP' }
+        });
 
-        // 3. Vendor ka abhi tak ka claimed amount check karo
         const vendor = await prisma.user.findUnique({ where: { id: vendorId } });
         const rewardsClaimed = vendor.rewardsClaimed || 0;
 
-        // 4. Calculation Logic (Maths)
+        // Calculation Logic
         const eligibleReward = Math.floor(totalOrders / 100) * 150;
         const availableToRedeem = eligibleReward - rewardsClaimed;
 
@@ -621,9 +636,8 @@ app.post('/api/vendor/redeem-reward', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: "No rewards available right now. Complete more orders!" });
         }
 
-        // 5. Database Update (Transaction taaki koi error na aaye)
+        // Wallet Update (Transaction)
         await prisma.$transaction([
-            // Wallet aur Claimed history update karo
             prisma.user.update({
                 where: { id: vendorId },
                 data: {
@@ -631,11 +645,10 @@ app.post('/api/vendor/redeem-reward', authenticateToken, async (req, res) => {
                     rewardsClaimed: { increment: availableToRedeem }
                 }
             })
-            // Agar aapke paas WalletTransaction table hai, toh yahan uski entry bhi add kar sakte ho
         ]);
 
         res.json({ 
-            message: `Success! ₹${availableToRedeem} added to your wallet. 🎉`, 
+            message: `Success! ₹${availableToRedeem} Century Bonus added to your wallet! 🎉`, 
             redeemedAmount: availableToRedeem 
         });
 
